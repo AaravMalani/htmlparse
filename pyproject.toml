@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parser-html"
+version = "1.0.0"
+authors = [
+  { name="Aarav Malani", email="aarav.malani@gmail.com" },
+]
+description = "A basic HTML parser in Python"
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/AaravMalani/htmlparse"
+"Bug Tracker" = "https://github.com/AaravMalani/htmlparse/issues"
