@@ -4,28 +4,43 @@ A basic HTML parser in Python
 from __future__ import annotations
 import codecs
 import re
-import dataclasses
 import typing
 import uuid
+import html # Only for unescape and escaping strings not parsing HTML
+
+class HTMLText:
+    def __init__(self, text: str, parent: typing.Optional[HTMLElement]):
+        self.__text = text
+        self.parent = parent
+        self.id = uuid.uuid4()
+    @ property
+    def text(self) -> str:
+        return self.__text
+    @ text.setter
+    def text(self, value: str):
+        self.__text = value
+        if self.parent:
+            val = self.parent.decode()
+            self.parent.outerHTML = val[0]+"".join(
+                [i.outerHTML for i in self.parent.children]) + val[1]
+    @ property
+    def outerHTML(self) -> str:
+        return html.escape(self.text)
+    def __repr__(self):
+        return repr(self.text)
 
 
-@dataclasses.dataclass
 class HTMLElement:
     """The main class for a single HTML element"""
 
-    children: list[HTMLElement]  # The list of children element
-    attrs: dict[str, str]  # The attributes (key="value")
-    tag_name: str  # The tag name
-    parent: typing.Optional[HTMLElement]  # The parent element
-    innerHTML: dataclasses.InitVar[str]  # The innerHTML
-    # The private uuid of the element in the parser
-    id: typing.Optional[str] = None
-
-    def __post_init__(self, innerHTML: str):
-        self.__innerHTML: str = innerHTML
-        self.id = uuid.uuid4()
+    def __init__(self, children: list[typing.Union[HTMLElement, HTMLText]], attrs: list[str], tag_name: str, parent: typing.Optional[HTMLElement], innerHTML: str):
+        self.__children: list[typing.Union[HTMLElement, HTMLText]] = children # The list of children element
+        self.__tag_name: str = tag_name # The tag name
+        self.parent: typing.Optional[HTMLElement] = parent # The parent element
+        self.__innerHTML: str = innerHTML # The innerHTML
+        self.id = uuid.uuid4() # The private uuid of the element in the parser
         lst = ['']
-        for i in self.attrs + ['']:
+        for i in attrs + ['']:
             try:
                 if len(lst[-1].split("=", 1)) == 1 and lst[-1]:
                     lst[-1] = (lst[-1], '')
@@ -49,17 +64,16 @@ class HTMLElement:
             lst += [i]
 
         lst = lst[:-1]
-        self.attrs = {k: v for k, v in lst}
-
+        self.__attrs : dict[str, str] = {k: v for k, v in lst}
     def decode(self) -> tuple[str]:
         """Returns the outer HTML tag(s) of the element
 
         Returns:
             tuple[str]: A singleton tuple for singleton tags or an opening and closing tag for normal elements
         """
-        attrs_str = [i+'='+'\''+codecs.escape_encode(self.attrs[i].encode('utf-8'))[
+        attrs_str = [' '+i+'='+'\''+codecs.escape_encode(self.attrs[i].encode('utf-8'))[
             0].decode('utf-8')+'\'' for i in self.attrs]
-        return f"<{self.tag_name} {' '.join(attrs_str)}>", (f"</{self.tag_name}>" if self.tag_name.lower() not in ['area', 'base', 'br', 'col', 'command', 'embed', 'hr', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr'] else "")
+        return f"<{self.tag_name}{''.join(attrs_str)}>", (f"</{self.tag_name}>" if self.tag_name.lower() not in ['area', 'base', 'br', 'col', 'command', 'embed', 'hr', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr'] else "")
 
     @ property
     def innerHTML(self) -> str:
@@ -117,6 +131,72 @@ class HTMLElement:
             raise ValueError("Error setting innerHTML")
         self.__innerHTML = value
         self.children = child.children
+
+    @ property
+    def children(self) -> list[HTMLElement]:
+        """Returns the list of children
+
+        Returns:
+            list[HTMLElement]: The list of children
+        """
+        return self.__children
+    
+    @ children.setter
+    def children(self, value: list[HTMLElement]):
+        """Set the list of children
+
+        Args:
+            value (list[HTMLElement]): The list of children
+        """
+        self.__children = value
+        for i in self.children:
+            i.parent = self
+        
+        if self.parent:
+            val = self.parent.decode()
+            self.parent.outerHTML = val[0]+"".join(
+                [i.outerHTML for i in self.parent.children]) + val[1]
+
+
+    @ property
+    def tag_name(self) -> str:
+        """Returns the tag name
+
+        Returns:
+            str: The tag name
+        """
+        return self.__tag_name
+    
+    @ tag_name.setter
+    def tag_name(self, value: str):
+        """Set the tag name
+
+        Args:
+            value (str): The tag name
+        """
+        self.__tag_name = value
+        if self.parent:
+            val = self.parent.decode()
+            self.parent.outerHTML = val[0]+"".join(
+                [i.outerHTML for i in self.parent.children]) + val[1]
+    
+    @ property
+    def attrs(self) -> dict[str, str]:
+        """Returns the attributes
+
+        Returns:
+            dict[str, str]: The attributes
+        """
+        return self.__attrs
+    
+    @ attrs.setter
+    def attrs(self, value: dict[str, str]):
+        """Set the attributes
+
+        Args:
+            value (dict[str, str]): The attributes
+        """
+        self.__attrs = value
         if self.parent:
             val = self.parent.decode()
             self.parent.outerHTML = val[0]+"".join(
@@ -134,6 +214,8 @@ class HTMLElement:
         if self.attrs.get('id') == id:
             return self
         for i in self.children:
+            if not isinstance(i, HTMLElement):
+                continue
             val = i.getElementById(id)
             if val == id:
                 return val
@@ -151,6 +233,8 @@ class HTMLElement:
         if self.attrs.get('class') and set(class_name.split(' ')).issubset(set(self.attrs.get('class').split(' '))):
             lst += [self]
         for i in self.children:
+            if not isinstance(i, HTMLElement):
+                continue
             lst += i.getElementsByClassName(class_name)
         return lst
 
@@ -167,14 +251,16 @@ class HTMLElement:
         if self.tag_name == tag_name:
             lst += [self]
         for i in self.children:
+            if not isinstance(i, HTMLElement):
+                continue
             lst += i.getElementsByTagName(tag_name)
         return lst
 
     def __repr__(self):
         nodef_f_vals = (
-            (f.name, getattr(self, f.name))
-            for f in dataclasses.fields(self)
-            if f.name not in ['children', 'parent']
+            (k.replace('_HTMLElement__',''), v)
+            for k,v in self.__dict__.items()
+            if k.replace('_HTMLElement__','') not in ['children', 'parent']
         )
 
         nodef_f_repr = ", ".join(
@@ -194,6 +280,8 @@ class HTMLElement:
         if attrs.items() <= self.attrs.items():
             lst += [attrs]
         for i in self.children:
+            if not isinstance(i, HTMLElement):
+                continue
             lst += i.getElementsByAttrs(attrs)
         return lst
 
@@ -229,11 +317,14 @@ def parse_html(data: str, parent: typing.Optional[HTMLElement] = None, tag_list:
         if tag_list[0].groups()[0].split(' ')[0].lower() in ['area', 'base', 'br', 'col', 'command', 'embed', 'hr', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr']:      
             return lst
         return None
+    
+    
     while j < len(tag_list)-1:
         tag = tag_list[j].groups()[0].split(' ')[0]
 
         j += 1
-
+        if data[tag_list[j-2 ].end():tag_list[j-1].start()].strip().replace('\n', ''):
+            lst.children += [HTMLText(html.unescape(data[tag_list[j-2 ].end():tag_list[j-1].start()]), lst)]
         if tag.lower() in ['area', 'base', 'br', 'col', 'command', 'embed', 'hr', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr']:
             child = parse_html(data, lst, [tag_list[j-1]])
             if not child:
@@ -252,9 +343,13 @@ def parse_html(data: str, parent: typing.Optional[HTMLElement] = None, tag_list:
             elif tag_list[j].groups()[0].split(" ")[0].lower() not in ['area', 'base', 'br', 'col', 'command', 'embed', 'hr', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr']:
                 depth += 1
             j += 1
+        
         if tag.lower() not in ['script', 'style']:
             child = parse_html(data, lst, tag_list[i: j])
+            
             if not child:
                 return
             lst.children += [child]
+    if data[tag_list[-2].end():tag_list[-1].start()].strip().replace('\n', ''):
+        lst.children += [HTMLText(html.unescape(data[tag_list[-2 ].end():tag_list[-1].start()]), lst)]
     return lst

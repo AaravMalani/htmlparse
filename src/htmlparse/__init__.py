@@ -1,1 +1,1 @@
-from .html import HTMLElement, parse_html
+from .html import HTMLElement, parse_html, HTMLText
